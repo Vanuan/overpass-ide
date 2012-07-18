@@ -4,6 +4,7 @@
 var ide = new(function() {
   // == private members ==
   var codeEditor = null;
+  var jsEditor = null;
   // == public members ==
   this.dataViewer = null;
   this.map = null;
@@ -11,7 +12,7 @@ var ide = new(function() {
   // == private methods ==
   var init = function() {
     // init codemirror
-    codeEditor = CodeMirror($("#editor")[0], {
+    codeEditor = CodeMirror($("#overpass_editor")[0], {
       //value:'[out:json];\n(\n  node\n    ["amenity"="drinking_water"]\n    (<bbox>)\n);\nout body;', 
       value:'<osm-script output="json">\n'+
             '  <query type="node">\n'+
@@ -22,6 +23,11 @@ var ide = new(function() {
             '</osm-script>\n',
       lineNumbers: true,
       mode: "xml"
+    });
+    jsEditor = CodeMirror($("#js_editor")[0], {
+      value: '' ,
+      lineNumbers: true,
+      mode: "javascript"
     });
     ide.dataViewer = CodeMirror($("#data")[0], {
       value:'no data loaded yet', 
@@ -207,6 +213,9 @@ var ide = new(function() {
   }
   this.getQuery = function() {
     return codeEditor.getValue();
+  }
+  this.getScript = function() {
+    return jsEditor.getValue();
   }
 
   // == initializations ==

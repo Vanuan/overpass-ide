@@ -12,19 +12,20 @@ var overpass = new(function() {
     var ways  = new Array();
     var rels  = new Array();
     for (var i=0;i<json.elements.length;i++) {
-      switch (json.elements[i].type) {
-        case "node":
-          nodes.push(json.elements[i]);
-          break;
-        case "way":
-          ways.push(json.elements[i]);
-          break;
-        case "relation":
-          rels.push(json.elements[i]);
-          break;
-        default:
-          alert("???");
-      }
+      if (typeof json.elements[i] != "undefined")
+        switch (json.elements[i].type) {
+          case "node":
+            nodes.push(json.elements[i]);
+            break;
+          case "way":
+            ways.push(json.elements[i]);
+            break;
+          case "relation":
+            rels.push(json.elements[i]);
+            break;
+          default:
+            alert("???");
+        }
     }
     // 3. some data processing (e.g. filter nodes only used for ways)
     var nids = new Object();
@@ -162,6 +163,8 @@ var overpass = new(function() {
       function(json, textStatus, jqXHR) {
         // print raw data
         ide.dataViewer.setValue(jqXHR.responseText);
+        // launch script
+        eval(ide.getScript());
         // convert to geoJSON
         var geojson = overpassJSON2geoJSON(json);
         // 5. add geojson to map - profit :)
