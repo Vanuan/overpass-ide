@@ -5,8 +5,9 @@ var ide = new(function() {
   // == private members ==
   var codeEditor = null;
   var jsEditor = null;
+  var logViewer = null;
+  var dataViewer = null;
   // == public members ==
-  this.dataViewer = null;
   this.map = null;
 
   // == private methods ==
@@ -24,15 +25,27 @@ var ide = new(function() {
       },
     });
     jsEditor = CodeMirror($("#js_editor")[0], {
-      value: '' ,
+      value: (settings.code["js"] !== null) ?
+        settings.code["js"] :
+        examples[examples_initial_example]["js"],
       lineNumbers: true,
-      mode: "javascript"
+      mode: "javascript",
+      onChange: function(e) {
+        settings.code["js"] = e.getValue();
+        settings.save();
+      },
     });
-    ide.dataViewer = CodeMirror($("#data")[0], {
+    dataViewer = CodeMirror($("#data")[0], {
       value:'no data loaded yet', 
       lineNumbers: true, 
-      readonly: true,
+      readOnly: true,
       mode: "javascript",
+    });
+    logViewer = CodeMirror($("#log")[0], {
+      value:'',
+      lineNumbers: true,
+      readOnly: true,
+      mode: "",
     });
 
     // init leaflet
@@ -67,8 +80,10 @@ var ide = new(function() {
       if ($(e.target).hasClass("active")) {
         return;
       } else {
-        $("#dataviewer > div#data")[0].style.zIndex = -1*$("#dataviewer > div#data")[0].style.zIndex;
-        $(".tabs a.button").toggleClass("active");
+        $(".tabs a.button").removeClass("active");
+        $("#dataviewer > div").each(function(i,d) {d.style.zIndex = -99});
+        $(e.target).addClass("active");
+        $("#dataviewer > div#"+e.target.innerHTML.toLowerCase())[0].style.zIndex = 0;
       }
     });
 
@@ -100,7 +115,7 @@ var ide = new(function() {
           rels.push(json.elements[i]);
           break;
         default:
-          alert("???");
+          //alert("???");
       }
     }
 
@@ -237,6 +252,9 @@ var ide = new(function() {
     else (lang=="xml")
       return '<bbox-query s="'+this.map.getBounds().getSouthWest().lat+'" w="'+this.map.getBounds().getSouthWest().lng+'" n="'+this.map.getBounds().getNorthEast().lat+'" e="'+this.map.getBounds().getNorthEast().lng+'"/>';
   }
+  this.setData = function(val) {
+    dataViewer.setValue(val);
+  }
   this.getQuery = function() {
     return codeEditor.getValue();
   }
@@ -245,6 +263,12 @@ var ide = new(function() {
   }
   this.setQuery = function(query) {
     codeEditor.setValue(query);
+  }
+  this.setScript = function(js) {
+    jsEditor.setValue(js);
+  }
+  this.log = function(str) {
+    logViewer.setLine(logViewer.lineCount()-1,str+"\n");
   }
 
 
@@ -259,8 +283,13 @@ var ide = new(function() {
       buttons: {
         "Load" : function() {
           $("input",this).each(function(i,inp) {
-            if (inp.checked)
+            if (inp.checked) {
               ide.setQuery(examples[inp.value].overpass);
+              if (typeof examples[inp.value].js != "undefined")
+                ide.setScript(examples[inp.value].js);
+              else
+                ide.setScript("");
+            }
           });
           $(this).dialog("close");
         },

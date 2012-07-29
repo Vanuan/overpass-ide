@@ -162,7 +162,7 @@ var overpass = new(function() {
     $.getJSON("http://overpass-api.de/api/interpreter?data="+encodeURIComponent(query),
       function(json, textStatus, jqXHR) {
         // print raw data
-        ide.dataViewer.setValue(jqXHR.responseText);
+        ide.setData(jqXHR.responseText);
         // launch script
         eval(ide.getScript());
         // convert to geoJSON
