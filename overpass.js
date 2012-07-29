@@ -164,7 +164,11 @@ var overpass = new(function() {
         // print raw data
         ide.setData(jqXHR.responseText);
         // launch script
-        eval(ide.getScript());
+        try {
+          eval(ide.getScript());
+        } catch(e) {
+          alert("Scrip execution failed :X\n\nError: "+e.message);
+        }
         // convert to geoJSON
         var geojson = overpassJSON2geoJSON(json);
         // 5. add geojson to map - profit :)

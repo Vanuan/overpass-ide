@@ -270,6 +270,9 @@ var ide = new(function() {
   this.log = function(str) {
     logViewer.setLine(logViewer.lineCount()-1,str+"\n");
   }
+  this.clearLog = function() {
+    logViewer.setValue("");
+  }
 
 
   // Event handlers
