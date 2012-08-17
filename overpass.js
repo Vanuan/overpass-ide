@@ -12,21 +12,89 @@ var overpass = new(function() {
     var ways  = new Array();
     var rels  = new Array();
     for (var i=0;i<json.elements.length;i++) {
-      if (typeof json.elements[i] != "undefined")
-        switch (json.elements[i].type) {
-          case "node":
-            nodes.push(json.elements[i]);
-            break;
-          case "way":
-            ways.push(json.elements[i]);
-            break;
-          case "relation":
-            rels.push(json.elements[i]);
-            break;
-          default:
-            alert("???");
-        }
+      switch (json.elements[i].type) {
+        case "node":
+          nodes.push(json.elements[i]);
+          break;
+        case "way":
+          ways.push(json.elements[i]);
+          break;
+        case "relation":
+          rels.push(json.elements[i]);
+          break;
+        default:
+          // type=area (from coord-query) is an example for this case.
+      }
     }
+    return convert2geoJSON(nodes,ways,rels);
+  }
+  var overpassXML2geoJSON = function(xml) {
+    // 2. sort elements
+    var nodes = new Array();
+    var ways  = new Array();
+    var rels  = new Array();
+    // nodes
+    $("node",xml).each(function(i) {
+      var tags = new Object();
+      $(this).find("tag").each(function(i) {
+        tags[$(this).attr("k")] = $(this).attr("v");
+      });
+      nodes[i] = {
+        "id":   $(this).attr("id"),
+        "lat":  $(this).attr("lat"),
+        "lon":  $(this).attr("lon"),
+        "type": "node",
+      };
+      if (!$.isEmptyObject(tags))
+        nodes[i].tags = tags;
+    });
+    // ways
+    $("way",xml).each(function(i) {
+      var tags = new Object();
+      var wnodes = new Array();
+      $(this).find("tag").each(function(i) {
+        tags[$(this).attr("k")] = $(this).attr("v");
+      });
+      $(this).find("nd").each(function(i) {
+        wnodes[i] = $(this).attr("ref");
+      });
+      ways[i] = {
+        "id":   $(this).attr("id"),
+        "tags": tags,
+        "type": "way",
+      };
+      if (wnodes.length > 0)
+        ways[i].nodes = wnodes;
+      if (!$.isEmptyObject(tags))
+        ways[i].tags = tags;
+    });
+    // relations
+    $("relation",xml).each(function(i) {
+      var tags = new Object();
+      var members = new Array();
+      $(this).find("tag").each(function(i) {
+        tags[$(this).attr("k")] = $(this).attr("v");
+      });
+      $(this).find("member").each(function(i) {
+        members[i] = {
+          "ref":  $(this).attr("ref"),
+          "role": $(this).attr("role"),
+          "type": $(this).attr("type"),
+        };
+      });
+      rels[i] = {
+        "id":   $(this).attr("id"),
+        "tags": tags,
+        "type": "relation",
+      };
+      if (members.length > 0)
+        rels[i].members = members;
+      if (!$.isEmptyObject(tags))
+        ways[i].tags = tags;
+    });
+    return convert2geoJSON(nodes,ways,rels);
+  }
+  var convert2geoJSON = function(nodes,ways,rels) {
     // 3. some data processing (e.g. filter nodes only used for ways)
     var nids = new Object();
     var nodeids = new Array();
@@ -154,28 +222,70 @@ var overpass = new(function() {
   this.update_map = function () {
     // 1. get overpass json data
     var query = ide.getQuery();
-    query = query.replace(/\(bbox\)/g,ide.map2bbox("ql")); // expand bbox
+    query = query.replace(/\(bbox\)/g,ide.map2bbox("ql")); // expand bbox query
     query = query.replace(/<bbox-query\/>/g,ide.map2bbox("xml")); // -"-
+    query = query.replace(/<coord-query\/>/g,ide.map2coord("xml")); // expand coord query
     query = query.replace(/(\n|\r)/g," "); // remove newlines
     query = query.replace(/\s+/g," "); // remove some whitespace
-    // if json: //TODO
-    $.getJSON("http://overpass-api.de/api/interpreter?data="+encodeURIComponent(query),
-      function(json, textStatus, jqXHR) {
-        // print raw data
-        ide.setData(jqXHR.responseText);
-        // launch script
+    //$.getJSON("http://overpass-api.de/api/interpreter?data="+encodeURIComponent(query),
+    $.post("http://overpass-api.de/api/interpreter", {data: query},
+      function(data, textStatus, jqXHR) {
+        // clear dataviewer (set a few lines later, after the content type is determined)
+        ide.setData("");
+        // different cases of loaded data: json data, xml data or error message?
+        var geojson;
+        // hacky firefox hack :( (it is not properly detecting json from the content-type header)
+        if (typeof data == "string" && data[0] == "{") { // if the data is a string, but looks more like a json object
+          try {
+            data = $.parseJSON(data);
+          } catch (e) {}
+        }
+        // launch script // todo: check if this is the correct location...
         try {
           eval(ide.getScript());
         } catch(e) {
           alert("Scrip execution failed :X\n\nError: "+e.message);
         }
-        // convert to geoJSON
-        var geojson = overpassJSON2geoJSON(json);
+        // end of script
+        // convert data to geojson (if possible)
+        if (typeof data == "string") { // maybe an error message
+          if (data.indexOf("Error") != -1 &&
+              data.indexOf("<script") == -1 &&
+              data.indexOf("<h2>Public Transport Stops</h2>") == -1) 
+            // this really looks like an error message, so lets open an additional modal error message
+            $('<div title="Error"><p style="color:red;">An error occured during the execution of the overpass query! This is what overpass API returned:</p>'+data.replace(/((.|\n)*<body>|<\/body>(.|\n)*)/g,"")+"</div>").dialog({
+              modal:true,
+              buttons:{"ok": function(){$(this).dialog("close");}},
+            });
+          ide.setDataViewerMode("xml");
+          geojson = [{features:[]}, {features:[]}];
+        } else if (typeof data == "object" && data instanceof XMLDocument) { // xml data
+          ide.setDataViewerMode("xml");
+          // convert to geoJSON
+          geojson = overpassXML2geoJSON(data);
+            [{features:[]}, {features:[]}];
+        } else { // maybe json data
+          ide.setDataViewerMode("javascript");
+          // convert to geoJSON
+          geojson = overpassJSON2geoJSON(data);
+        }
+        // print raw data
+        ide.setData(jqXHR.responseText);
+
         // 5. add geojson to map - profit :)
         if (geojsonLayer != null) 
           ide.map.removeLayer(geojsonLayer);
-        geojsonLayer = new L.GeoJSON(null, {
-          pointToLayer: function (latlng) {
+        // if there is only non map-visible data, show it directly
+        // TODO: auto tab switching needs some refinement: e.g. when executing a script, it should be able to choose a tab, etc.
+        if ((geojson[0].features.length + geojson[1].features.length == 0) &&
+            true)//(json.elements.length > 0))
+          ide.switchTab("Data");
+        geojsonLayer = new L.GeoJSON(geojson[0], {
+          style: function(feature) {
+            return { // todo
+            };
+          },
+          pointToLayer: function (feature, latlng) {
             return new L.CircleMarker(latlng, {
               radius      : 8,
               fillColor   : "#ff7800",
@@ -184,58 +294,67 @@ var overpass = new(function() {
               opacity     : 0.8,
               fillOpacity : 0.4
             });
-          }
-        });
-        geojsonLayer.on("featureparse", function (e) {
-          var popup = "";
-          if (e.geometryType == "Point")
-            popup += "<h2>Node <a href='http://www.openstreetmap.org/browse/node/"+e.id+"'>"+e.id+"</a></h2>";
-          else
-            popup += "<h2>Way <a href='http://www.openstreetmap.org/browse/way/"+e.id+"'>"+e.id+"</a></h2>";
-          if (e.properties && e.properties.tags) {
-            popup += "<h3>Tags:</h3><ul>";
-            $.each(e.properties.tags, function(k,v) {popup += "<li>"+k+"="+v+"</li>"});
-            popup += "</ul>";
-          }
-          if (e.properties && (typeof e.properties.relations != "undefined")) {
-            popup += "<h3>Relations:</h3><ul>";
-            $.each(e.properties.relations, function (k,v) {
-              popup += "<li><a href='http://www.openstreetmap.org/browse/relation/"+v["rel"]+"'>"+v["rel"]+"</a>";
-              if (v["role"]) 
-                popup += " (as "+v["role"]+")";
-              popup += "</li>";
-            });
-            popup += "</ul>";
-          }
-          switch (e.geometryType) {
-          case "LineString":
-          case "Polygon": 
-          case "Multipolygon":
-            if (e.properties && e.properties.tainted==true) {
-              popup += "<strong>Attention: uncomplete way (some nodes missing)</strong>";
-              e.layer.options.opacity *= 0.5;
+          },
+          onEachFeature : function (feature, layer) {
+            var popup = "";
+            if (feature.geometry.type == "Point")
+              popup += "<h2>Node <a href='http://www.openstreetmap.org/browse/node/"+feature.id+"'>"+feature.id+"</a></h2>";
+            else
+              popup += "<h2>Way <a href='http://www.openstreetmap.org/browse/way/"+feature.id+"'>"+feature.id+"</a></h2>";
+            if (feature.properties && feature.properties.tags) {
+              popup += "<h3>Tags:</h3><ul>";
+              $.each(feature.properties.tags, function(k,v) {popup += "<li>"+k+"="+v+"</li>"});
+              popup += "</ul>";
             }
-          }
-          switch (e.geometryType) {
-          case "Polygon": 
-          case "Multipolygon":
-            e.layer.options.fillColor = "#90DE3C";
-            e.layer.options.fillOpacity = 0.4;
-            e.layer.options.color = "#90DE3C";
-          }
-          if (e.properties && e.properties.relations && e.properties.relations.length>0) {
-            e.layer.options.color = "#f13";
-          }
-          if (popup != "")
-            e.layer.bindPopup(popup);
+            if (feature.properties && (typeof feature.properties.relations != "undefined")) {
+              popup += "<h3>Relations:</h3><ul>";
+              $.each(feature.properties.relations, function (k,v) {
+                popup += "<li><a href='http://www.openstreetmap.org/browse/relation/"+v["rel"]+"'>"+v["rel"]+"</a>";
+                if (v["role"]) 
+                  popup += " (as "+v["role"]+")";
+                popup += "</li>";
+              });
+              popup += "</ul>";
+            }
+            switch (feature.geometry.type) {
+            case "LineString":
+            case "Polygon": 
+            case "Multipolygon":
+              if (feature.properties && feature.properties.tainted==true) {
+                popup += "<strong>Attention: uncomplete way (some nodes missing)</strong>";
+                layer.options.opacity *= 0.5;
+              }
+            }
+            switch (feature.geometry.type) {
+            case "Polygon": 
+            case "Multipolygon":
+              layer.options.fillColor = "#90DE3C";
+              layer.options.fillOpacity = 0.4;
+              layer.options.color = "#90DE3C";
+            }
+            if (feature.properties && feature.properties.relations && feature.properties.relations.length>0) {
+              layer.options.color = "#f13";
+            }
+            if (popup != "")
+              layer.bindPopup(popup);
+          },
         });
         for (i=0;i<geojson.length;i++) {
-          geojsonLayer.addGeoJSON(geojson[i]);
+          geojsonLayer.addData(geojson[i]);
         }
         ide.map.addLayer(geojsonLayer);
 
-    });
-    
+    }).error(function(jqXHR, textStatus, errorThrown) {
+      // todo: better error handling (add more details, e.g. server unreachable, redirection, etc.)
+      // note to me: jqXHR.status should give http status codes
+      //$('<div title="Error"><p style="color:red;">An error occured during the execution of the overpass query! This is what overpass API returned:</p>'+jqXHR.responseText.replace(/((.|\n)*<body>|<\/body>(.|\n)*)/g,"")+"</div>").dialog({
+      ide.dataViewer.setValue("");
+      $('<div title="Error"><p style="color:red;">An error occured during the execution of the overpass query!</p></div>').dialog({
+        modal:true,
+        buttons: {"ok": function() {$(this).dialog("close");}},
+      }); // dialog
+    }); // getJSON
+
   }
 
   // == initializations ==

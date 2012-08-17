@@ -39,7 +39,7 @@ body {
   height:100%;
   position:absolute;
   top:0;
-  z-index:-99;
+  z-index:-1001;
 }
 #log {
   background-color:white;
@@ -167,7 +167,7 @@ a.button.disabled {
 .modal {
   display: none;
   position: fixed;
-  z-index: 1000;
+  z-index: 1007;
   top: 0;
   left: 0;
   width: 100%;

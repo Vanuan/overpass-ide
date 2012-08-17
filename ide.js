@@ -14,6 +14,18 @@ var ide = new(function() {
   var init = function() {
     // load settings
     settings.load();
+    // check for any get-parameters
+    if (location.search != "") {
+      var get = location.search.substring(1).split("&");
+      for (var i=0; i<get.length; i++) {
+        var kv = get[i].split("=");
+        if (kv[0] == "q") // compressed query set in url
+          settings.code["overpass"] = lzw_decode(Base64.decode(decodeURIComponent(kv[1])));
+        if (kv[0] == "Q") // uncompressed query set in url
+          settings.code["overpass"] = decodeURIComponent(kv[1]);
+      }
+      settings.save();
+    }
 
     // init codemirror
     codeEditor = CodeMirror($("#overpass_editor")[0], {
@@ -54,6 +66,7 @@ var ide = new(function() {
     var osm = new L.TileLayer(osmUrl,{minZoom:4,maxZoom:18,attribution:osmAttrib});
     var pos = new L.LatLng(settings.coords_lat,settings.coords_lon);
     ide.map.setView(pos,settings.coords_zoom).addLayer(osm);
+    L.control.scale().addTo(ide.map);
     if (settings.use_html5_coords) {
       // One-shot position request.
       try {
@@ -74,7 +87,7 @@ var ide = new(function() {
     $("a.disabled").bind("click",function() { return false; });
 
     // tabs
-    $("#dataviewer > div#data")[0].style.zIndex = -99;
+    $("#dataviewer > div#data")[0].style.zIndex = -1001;
     $(".tabs a.button").bind("click",function(e) {
       if ($(e.target).hasClass("active")) {
         return;
@@ -96,6 +109,15 @@ var ide = new(function() {
       },
     });
 
+    // keyboard event listener
+    $("body").keypress(function(event) {
+      if ((event.keyCode == 120) || // F9
+          ((event.which == 13 || event.which == 10) && (event.ctrlKey || event.metaKey))) { // Ctrl+Enter
+        ide.onRunClick(); // run query
+        event.preventDefault();
+      }
+      // todo: more shortcuts
+    });
   }
   var overpassJSON2geoJSON = function(json) {
     // 2. sort elements
@@ -244,7 +266,7 @@ var ide = new(function() {
 
   // == public methods ==
 
-  // returns the current visible bbox
+  // returns the current visible bbox as a bbox-query
   this.map2bbox = function(lang) {
     if (lang=="ql")
       return "("+this.map.getBounds().getSouthWest().lat+','+this.map.getBounds().getSouthWest().lng+','+this.map.getBounds().getNorthEast().lat+','+this.map.getBounds().getNorthEast().lng+")";
@@ -253,6 +275,14 @@ var ide = new(function() {
   }
   this.setData = function(val) {
     dataViewer.setValue(val);
+  }
+  this.setDataViewerMode = function(mode) {
+    dataViewer.setOption("mode",mode);
+  }
+  // returns the current visible map center as a coord-query
+  this.map2coord = function(lang) {
+    if (lang=="xml")
+      return '<coord-query lat="'+this.map.getCenter().lat+'" lon="'+this.map.getCenter().lng+'"/>';
   }
   this.getQuery = function() {
     return codeEditor.getValue();
@@ -273,6 +303,9 @@ var ide = new(function() {
     logViewer.setValue("");
   }
 
+  this.switchTab = function(tab) {
+    $("#navs .tabs a:contains('"+tab+"')").click();
+  }
 
   // Event handlers
   this.onLoadClick = function() {
@@ -281,7 +314,7 @@ var ide = new(function() {
       ex_html += '<li><input type="radio" name="ex_list" value="'+example+'" />'+example+'</li>';
     $('<div title="Load"><p>Select example to load:</p><ul>'+ex_html+'</ul></div>').dialog({
       modal:true,
-      height:250,
+      //height:250,
       buttons: {
         "Load" : function() {
           $("input",this).each(function(i,inp) {
@@ -303,7 +336,7 @@ var ide = new(function() {
   this.onSaveClick = function() {
     $('<div title="Save"><p>Select name</p><p><input name="save" type="text" /></p></div>').dialog({
       modal:true,
-      height:150,
+      //height:150,
       buttons: {
         "Save" : function() {
           var name = $("input",this)[0].value;
@@ -321,16 +354,36 @@ var ide = new(function() {
   this.onRunClick = function() {
     overpass.update_map();
   }
+  this.onShareClick = function() {
+    var baseurl=location.protocol+"//"+location.host+location.pathname;
+    var shared_code = codeEditor.getValue();
+    var share_link_uncompressed = baseurl+"?Q="+encodeURIComponent(shared_code);
+    var share_link;
+    if (shared_code.length <= 300) // todo: more options for this in the settings (auto / compressed / uncompressed)
+      share_link = share_link_uncompressed;
+    else {
+      var share_link_compressed = baseurl+"?q="+encodeURIComponent(Base64.encode(lzw_encode(shared_code)));
+      share_link = share_link_compressed;
+    }
+    var warning = '';
+    if (share_link.length >= 2000)
+      warning = '<p style="color:orange">Warning: This share-link is quite long. It may not work under certain circumstances</a> (browsers, webservers).</p>';
+    if (share_link.length >= 8000)
+      warning = '<p style="color:red">Warning: This share-link is very long. It is likely to fail under normal circumstances (browsers, webservers). Use with caution.</p>';
+    //alert(share_link_uncompressed.length + " / " + share_link_compressed.length + " => " + ((share_link_uncompressed.length-share_link_compressed.length)/share_link_uncompressed.length * 100) + "%");
+    $('<div title="Share"><p>Copy this <a href="'+share_link+'">link</a> to share the current code:</p><p><textarea rows=4 style="width:100%" readonly>'+share_link+'</textarea></p>'+warning+'</div>').dialog({
+      modal:true,
+      buttons: {
+        "OK": function() {$(this).dialog("close");}
+      }
+    });
+  }
 
   // == initializations ==
   // initialize on document ready
   $(document).ready(init);
 
 })(); // end create ide object
-
-
-
-
 
 
 
