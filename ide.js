@@ -355,6 +355,7 @@ var ide = new(function() {
     overpass.update_map();
   }
   this.onShareClick = function() {
+    // TODO: the script should also be shared?
     var baseurl=location.protocol+"//"+location.host+location.pathname;
     var shared_code = codeEditor.getValue();
     var share_link_uncompressed = baseurl+"?Q="+encodeURIComponent(shared_code);
