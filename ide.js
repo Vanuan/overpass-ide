@@ -111,7 +111,7 @@ var ide = new(function() {
 
     // keyboard event listener
     $("body").keypress(function(event) {
-      if ((event.keyCode == 120) || // F9
+      if (//(event.keyCode == 120) || // F9
           ((event.which == 13 || event.which == 10) && (event.ctrlKey || event.metaKey))) { // Ctrl+Enter
         ide.onRunClick(); // run query
         event.preventDefault();
