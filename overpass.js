@@ -177,6 +177,7 @@ var overpass = new(function() {
       "type"     : "FeatureCollection",
       "features" : new Array()};
     for (var i=0;i<ways.length;i++) {
+      if (ways[i].tags["hidden"]) continue;
       ways[i].tainted = false;
       coords = new Array();
       for (j=0;j<ways[i].nodes.length;j++) {
