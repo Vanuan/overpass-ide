@@ -336,6 +336,9 @@ var overpass = new(function() {
             if (feature.properties && feature.properties.relations && feature.properties.relations.length>0) {
               layer.options.color = "#f13";
             }
+            if (feature.properties && feature.properties["tags"] && feature.properties["tags"]["color"]) {
+              layer.options.color = feature.properties["tags"]["color"];
+            }
             if (popup != "")
               layer.bindPopup(popup);
           },
